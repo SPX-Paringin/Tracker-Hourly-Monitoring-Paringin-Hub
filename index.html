@@ -512,7 +512,6 @@
                 <button class="btn-action export-btn" onclick="exportToPNG()">📷 Export PNG</button>
                 <button class="btn-action delete-btn" onclick="clearCSVData()">🗑️ Hapus Data</button>
             </div>
-            <!-- Mendukung semua jenis file CSV/Spreadsheet -->
             <input type="file" id="csvFileInput" accept=".csv, text/csv, application/vnd.ms-excel, application/csv, text/x-csv, text/comma-separated-values, application/x-csv" style="display: none;">
             <div class="last-import-info" id="lastImportText">Belum ada data diimpor</div>
         </div>
@@ -927,7 +926,7 @@
             return `${d}/${m}/${y} ${hh}:${mm}:${ss} WITA`;
         }
 
-        // CSV File Reader (UNIVERSAL SUPPORT UNTUK EXCEL / GOOGLE SHEETS)
+        // CSV File Reader
         document.getElementById('csvFileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -939,9 +938,8 @@
                 Papa.parse(file, {
                     header: true,
                     skipEmptyLines: 'greedy',
-                    delimiter: "", // Auto-detect pembatas: koma (,), titik koma (;), atau tab (\t)
+                    delimiter: "", // Auto-detect pembatas
                     transformHeader: function(header) {
-                        // Menghapus UTF-8 BOM tersembunyi (\ufeff) yang dibuat oleh Excel
                         return header ? header.replace(/^\uFEFF/, '').trim() : '';
                     },
                     complete: async function(results) {
@@ -1102,7 +1100,6 @@
             return tRiderPlus;
         }
 
-        // Fleksibilitas ekstra untuk deteksi nama kolom CSV
         function getCSVKeys(sample) {
             const keys = Object.keys(sample || {});
             
@@ -1153,10 +1150,12 @@
                 if (onHoldStatuses.includes(status)) globalOnHoldCount++;
                 if (deliveringStatuses.includes(status)) globalDeliveringCount++;
 
-                // Kunci identifikasi kurir: Gunakan driverId jika ada, atau driverName jika ID kosong
                 const validDriverId = (driverId && driverId !== '0' && driverId !== 'undefined') ? driverId : '';
                 const validDriverName = (driverName && driverName !== 'undefined') ? driverName : '';
-                const driverKey = validDriverId || validDriverName;
+
+                // KUNCI UTAMA: Normalisasi Nama Kurir agar selalu gabung ke 1 baris
+                const cleanName = validDriverName.trim().toUpperCase().replace(/\s+/g, ' ');
+                const driverKey = cleanName || validDriverId;
 
                 if (driverKey) {
                     if (!driversMap[driverKey]) {
@@ -1164,7 +1163,7 @@
                         const contractType = getContractType(validDriverName, rawContract);
                         
                         driversMap[driverKey] = {
-                            id: validDriverId, // Tetap kosong jika tidak ada ID Driver dari file upload
+                            id: validDriverId,
                             name: validDriverName || 'Unknown',
                             contract: contractType,
                             target: getTargetByContract(contractType),
@@ -1181,6 +1180,8 @@
                     }
 
                     const driver = driversMap[driverKey];
+                    // Jika ID sebelumnya belum ada, perbarui dengan ID valid yang ditemukan
+                    if (!driver.id && validDriverId) driver.id = validDriverId;
                     if (zone && zone !== '-' && driver.zone === '-') driver.zone = zone;
 
                     const formattedAssign = formatHHMM(assignTime);
@@ -1213,7 +1214,7 @@
                         }
                     }
                 } else if (onHoldStatuses.includes(status)) {
-                    // Hanya masuk ke unassigned Zone jika tidak ada ID Driver maupun Nama Driver
+                    // Hanya masuk ke Unassigned Zone jika Nama & ID Kurir benar-benar kosong
                     if (!unassignedZoneMap[zone]) {
                         unassignedZoneMap[zone] = {
                             id: zone,
@@ -1283,9 +1284,7 @@
             const totalDrivers = drivers.length;
             const totalDelivered = drivers.reduce((sum, d) => sum + d.delivered, 0);
             
-            // Total Order = Delivering + Delivered + OnHold
             const totalOrder = globalDeliveringCount + totalDelivered + globalOnHoldCount;
-            
             const successRate = totalOrder > 0 ? ((totalDelivered / totalOrder) * 100).toFixed(2) : '0.00';
             
             const notAchieveCount = drivers.filter(d => {
@@ -1414,7 +1413,9 @@
 
                 const validDriverId = (driverId && driverId !== '0' && driverId !== 'undefined') ? driverId : '';
                 const validDriverName = (driverName && driverName !== 'undefined') ? driverName : '';
-                const driverKey = validDriverId || validDriverName;
+                
+                const cleanName = validDriverName.trim().toUpperCase().replace(/\s+/g, ' ');
+                const driverKey = cleanName || validDriverId;
                 const hasDriver = !!driverKey;
 
                 if (selectedContract !== 'ALL') {
@@ -1466,6 +1467,7 @@
                 }
 
                 const pd = perfDriversMap[groupKey];
+                if (!pd.id && validDriverId) pd.id = validDriverId;
                 
                 pd.assigned++;
                 perfTotalAssigned++;
@@ -1487,7 +1489,6 @@
                 }
             }
 
-            // Total Order Performance = Delivering + Delivered + OnHold
             perfTotalOrder = perfTotalDelivering + perfTotalDelivered + perfTotalOnHold;
 
             const perfList = Object.values(perfDriversMap);
