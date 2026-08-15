@@ -8,6 +8,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Firebase SDK (Compat Version untuk HTML Statis) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
         :root {
             /* Palette Warna SPX Light Theme */
@@ -170,7 +176,7 @@
         .title-group p { font-size: 12px; color: var(--text-muted); font-weight: 600; }
 
         .upload-container { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
         
         .btn-action {
             padding: 9px 16px; 
@@ -185,6 +191,12 @@
             gap: 6px;
             color: white;
         }
+
+        .login-btn {
+            background: #4285F4;
+            box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+        }
+        .login-btn:hover { background: #3367D6; transform: translateY(-2px); }
 
         .upload-btn {
             background: linear-gradient(135deg, var(--spx-orange) 0%, var(--orange-bright) 100%);
@@ -204,7 +216,19 @@
         }
         .delete-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); }
 
-        .last-import-info { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+        .last-import-info { font-size: 11px; color: var(--text-muted); font-weight: 600; text-align: right; }
+        
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #F1F5F9;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .user-avatar { width: 24px; height: 24px; border-radius: 50%; }
 
         /* Navigation Tab Bar */
         .tab-bar {
@@ -508,12 +532,21 @@
         </div>
         <div class="upload-container">
             <div class="action-buttons">
+                <!-- User Profile & Auth Controls -->
+                <div id="userProfileArea" style="display: none;" class="user-profile">
+                    <img id="userPhoto" class="user-avatar" src="" alt="Profile">
+                    <span id="userName">User</span>
+                    <button onclick="logoutGoogle()" style="border:none; background:transparent; cursor:pointer; font-size:12px;" title="Logout">🚪</button>
+                </div>
+                <button id="btnLogin" class="btn-action login-btn" onclick="loginGoogle()">🔑 Login Google</button>
+
                 <label for="csvFileInput" class="btn-action upload-btn">📁 Upload CSV Baru</label>
                 <button class="btn-action export-btn" onclick="exportToPNG()">📷 Export PNG</button>
                 <button class="btn-action delete-btn" onclick="clearCSVData()">🗑️ Hapus Data</button>
             </div>
             <input type="file" id="csvFileInput" accept=".csv, text/csv, application/vnd.ms-excel, application/csv, text/x-csv, text/comma-separated-values, application/x-csv" style="display: none;">
             <div class="last-import-info" id="lastImportText">Belum ada data diimpor</div>
+            <div class="last-import-info" id="lastUpdatedByText" style="color: var(--spx-orange); font-weight: 700;">-</div>
         </div>
     </div>
 
@@ -782,6 +815,93 @@
     </div>
 
     <script>
+        // ================= FIREBASE INITIALIZATION =================
+        // Ganti kredensial di bawah dengan API Key dari Firebase Console Kamu!
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null;
+
+        // Login & Auth State Listener
+        auth.onAuthStateChanged(user => {
+            currentUser = user;
+            const btnLogin = document.getElementById('btnLogin');
+            const profileArea = document.getElementById('userProfileArea');
+
+            if (user) {
+                btnLogin.style.display = 'none';
+                profileArea.style.display = 'flex';
+                document.getElementById('userName').innerText = user.displayName ? user.displayName.split(' ')[0] : 'User';
+                document.getElementById('userPhoto').src = user.photoURL || 'https://via.placeholder.com/24';
+            } else {
+                btnLogin.style.display = 'flex';
+                profileArea.style.display = 'none';
+            }
+        });
+
+        function loginGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(err => alert("Gagal Login: " + err.message));
+        }
+
+        function logoutGoogle() {
+            auth.signOut();
+        }
+
+        // Sync Data Real-time ke Server Firestore
+        function syncDataToCloud(parsedCSV = null) {
+            const updatePayload = {
+                targetDriverDed: document.getElementById('targetDriverDed').value,
+                targetRiderDed: document.getElementById('targetRiderDed').value,
+                targetRiderPlus: document.getElementById('targetRiderPlus').value,
+                last_updated_by_email: currentUser ? currentUser.email : 'Guest / Anonim',
+                last_updated_by_name: currentUser ? currentUser.displayName : 'Guest User',
+                updated_at: getWITAFormattedDate()
+            };
+
+            if (parsedCSV) {
+                updatePayload.csv_data = JSON.stringify(parsedCSV);
+            }
+
+            db.collection('dashboard').doc('spx_state').set(updatePayload, { merge: true })
+                .catch(err => console.error("Gagal sync data ke cloud:", err));
+        }
+
+        // Listen Real-time Perubahan Data dari Firebase Server
+        db.collection('dashboard').doc('spx_state').onSnapshot(doc => {
+            if (doc.exists) {
+                const data = doc.data();
+                
+                // Update Target Weekly dari Cloud
+                if (data.targetDriverDed) document.getElementById('targetDriverDed').value = data.targetDriverDed;
+                if (data.targetRiderDed) document.getElementById('targetRiderDed').value = data.targetRiderDed;
+                if (data.targetRiderPlus) document.getElementById('targetRiderPlus').value = data.targetRiderPlus;
+
+                // Update Metadata Pembaru Terakhir
+                if (data.last_updated_by_email) {
+                    document.getElementById('lastUpdatedByText').innerText = `Terakhir diupdate oleh: ${data.last_updated_by_name} (${data.last_updated_by_email})`;
+                }
+
+                // Update Data CSV dari Cloud
+                if (data.csv_data) {
+                    globalRawCSVData = JSON.parse(data.csv_data);
+                    document.getElementById('lastImportText').innerText = `Terakhir Impor: ${data.updated_at}`;
+                    processRawCSV(globalRawCSVData);
+                }
+            }
+        });
+
+        // ================= SISTEM DASHBOARD UTAMA =================
         let donutChartInstance = null;
         let lineChartInstance = null;
         
@@ -889,6 +1009,7 @@
             localStorage.setItem('spx_target_rider_ded', document.getElementById('targetRiderDed').value);
             localStorage.setItem('spx_target_rider_plus', document.getElementById('targetRiderPlus').value);
 
+            syncDataToCloud();
             recalculateTarget();
         }
 
@@ -952,6 +1073,7 @@
                             updateProgress(75, 'Menyimpan & Menghitung Analytics...');
 
                             await saveCSVToIDB(globalRawCSVData, timeWITA);
+                            syncDataToCloud(globalRawCSVData);
 
                             setTimeout(() => {
                                 document.getElementById('lastImportText').innerText = `Terakhir Impor: ${timeWITA}`;
@@ -982,6 +1104,12 @@
             if (!confirm("Apakah Anda yakin ingin menghapus data CSV yang tersimpan?")) return;
 
             await deleteCSVFromIDB();
+            db.collection('dashboard').doc('spx_state').update({
+                csv_data: firebase.firestore.FieldValue.delete(),
+                last_updated_by_email: currentUser ? currentUser.email : 'Guest / Anonim',
+                last_updated_by_name: currentUser ? currentUser.displayName : 'Guest User',
+                updated_at: getWITAFormattedDate()
+            });
 
             globalRawCSVData = [];
             cachedDrivers = [];
@@ -1153,7 +1281,6 @@
                 const validDriverId = (driverId && driverId !== '0' && driverId !== 'undefined') ? driverId : '';
                 const validDriverName = (driverName && driverName !== 'undefined') ? driverName : '';
 
-                // KUNCI UTAMA: Normalisasi Nama Kurir agar selalu gabung ke 1 baris
                 const cleanName = validDriverName.trim().toUpperCase().replace(/\s+/g, ' ');
                 const driverKey = cleanName || validDriverId;
 
@@ -1180,7 +1307,6 @@
                     }
 
                     const driver = driversMap[driverKey];
-                    // Jika ID sebelumnya belum ada, perbarui dengan ID valid yang ditemukan
                     if (!driver.id && validDriverId) driver.id = validDriverId;
                     if (zone && zone !== '-' && driver.zone === '-') driver.zone = zone;
 
@@ -1214,7 +1340,6 @@
                         }
                     }
                 } else if (onHoldStatuses.includes(status)) {
-                    // Hanya masuk ke Unassigned Zone jika Nama & ID Kurir benar-benar kosong
                     if (!unassignedZoneMap[zone]) {
                         unassignedZoneMap[zone] = {
                             id: zone,
@@ -1344,20 +1469,19 @@
                     else contractHTML = `<span class="contract-plus">${d.contract}</span>`;
                 }
 
-                // Kalkulasi Volume Bar & Warna Success Rate untuk Hourly Table
                 let srCellHTML = '';
                 if (d.isLMHub) {
                     srCellHTML = `<td style="font-weight: bold; color: var(--text-muted);">-</td>`;
                 } else {
                     const formattedRate = successRateVal.toFixed(1);
-                    let barColor = '#EF4444'; // Merah (< 85%)
+                    let barColor = '#EF4444';
                     let textColor = '#DC2626';
 
                     if (successRateVal >= 95) {
-                        barColor = '#22C55E'; // Hijau (>= 95%)
+                        barColor = '#22C55E';
                         textColor = '#16A34A';
                     } else if (successRateVal >= 85) {
-                        barColor = '#F59E0B'; // Kuning (85% - 94.9%)
+                        barColor = '#F59E0B';
                         textColor = '#D97706';
                     }
 
