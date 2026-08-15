@@ -1153,14 +1153,19 @@
                 if (onHoldStatuses.includes(status)) globalOnHoldCount++;
                 if (deliveringStatuses.includes(status)) globalDeliveringCount++;
 
-                if (driverId && driverId !== '0' && driverId !== 'undefined') {
-                    if (!driversMap[driverId]) {
+                // Kunci identifikasi kurir: Gunakan driverId jika ada, atau driverName jika ID kosong
+                const validDriverId = (driverId && driverId !== '0' && driverId !== 'undefined') ? driverId : '';
+                const validDriverName = (driverName && driverName !== 'undefined') ? driverName : '';
+                const driverKey = validDriverId || validDriverName;
+
+                if (driverKey) {
+                    if (!driversMap[driverKey]) {
                         const rawContract = map.kContract ? row[map.kContract] : '';
-                        const contractType = getContractType(driverName, rawContract);
+                        const contractType = getContractType(validDriverName, rawContract);
                         
-                        driversMap[driverId] = {
-                            id: driverId,
-                            name: driverName || 'Unknown',
+                        driversMap[driverKey] = {
+                            id: validDriverId, // Tetap kosong jika tidak ada ID Driver dari file upload
+                            name: validDriverName || 'Unknown',
                             contract: contractType,
                             target: getTargetByContract(contractType),
                             zone: zone,
@@ -1175,7 +1180,8 @@
                         };
                     }
 
-                    const driver = driversMap[driverId];
+                    const driver = driversMap[driverKey];
+                    if (zone && zone !== '-' && driver.zone === '-') driver.zone = zone;
 
                     const formattedAssign = formatHHMM(assignTime);
                     if (formattedAssign) {
@@ -1207,6 +1213,7 @@
                         }
                     }
                 } else if (onHoldStatuses.includes(status)) {
+                    // Hanya masuk ke unassigned Zone jika tidak ada ID Driver maupun Nama Driver
                     if (!unassignedZoneMap[zone]) {
                         unassignedZoneMap[zone] = {
                             id: zone,
@@ -1276,7 +1283,7 @@
             const totalDrivers = drivers.length;
             const totalDelivered = drivers.reduce((sum, d) => sum + d.delivered, 0);
             
-            // PERBAIKAN: Total Order = Delivering + Delivered + OnHold
+            // Total Order = Delivering + Delivered + OnHold
             const totalOrder = globalDeliveringCount + totalDelivered + globalOnHoldCount;
             
             const successRate = totalOrder > 0 ? ((totalDelivered / totalOrder) * 100).toFixed(2) : '0.00';
@@ -1340,7 +1347,7 @@
 
                 htmlString += `<tr>
                     <td>${idx + 1}</td>
-                    <td style="font-weight: 700;">${d.id}</td>
+                    <td style="font-weight: 700;">${d.id || ''}</td>
                     <td style="text-align: left; font-weight: 700;">${d.name}</td>
                     <td>${contractHTML}</td>
                     <td style="font-weight: 600;">${d.zone}</td>
@@ -1405,7 +1412,10 @@
                 const serviceValue = map.kService && row[map.kService] ? String(row[map.kService]).toUpperCase() : '';
                 const zone = map.kZone && row[map.kZone] ? String(row[map.kZone]).trim() : 'Unknown Zone';
 
-                const hasDriver = (driverId && driverId !== '0' && driverId !== 'undefined');
+                const validDriverId = (driverId && driverId !== '0' && driverId !== 'undefined') ? driverId : '';
+                const validDriverName = (driverName && driverName !== 'undefined') ? driverName : '';
+                const driverKey = validDriverId || validDriverName;
+                const hasDriver = !!driverKey;
 
                 if (selectedContract !== 'ALL') {
                     if (hasDriver) {
@@ -1421,9 +1431,9 @@
                     if (serviceValue.includes('ECO') || serviceValue.includes('ECONOMY')) continue;
                 }
 
-                const groupKey = hasDriver ? driverId : ('ZONE_' + zone);
-                const targetId = hasDriver ? driverId : zone;
-                const targetName = hasDriver ? driverName : zone;
+                const groupKey = hasDriver ? driverKey : ('ZONE_' + zone);
+                const targetId = validDriverId;
+                const targetName = hasDriver ? validDriverName : zone;
                 const targetContract = hasDriver ? contractType : '-';
 
                 if (searchQuery) {
@@ -1477,7 +1487,7 @@
                 }
             }
 
-            // PERBAIKAN: Total Order Performance = Delivering + Delivered + OnHold
+            // Total Order Performance = Delivering + Delivered + OnHold
             perfTotalOrder = perfTotalDelivering + perfTotalDelivered + perfTotalOnHold;
 
             const perfList = Object.values(perfDriversMap);
@@ -1530,7 +1540,7 @@
 
                 html += `<tr>
                     <td>${idx + 1}</td>
-                    <td style="font-weight: 700;">${d.id}</td>
+                    <td style="font-weight: 700;">${d.id || ''}</td>
                     <td style="text-align: left; font-weight: 700;">${d.name}</td>
                     <td>${contractHTML}</td>
                     <td style="font-weight: 800; color: #0284C7;">${d.assigned}</td>
