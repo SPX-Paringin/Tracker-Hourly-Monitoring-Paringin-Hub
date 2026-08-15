@@ -1319,7 +1319,7 @@
                 let assigned = 0;
                 let gapDisplay = '0';
                 let gapStyle = 'color: var(--text-main);';
-                let successRateDriver = '0.0%';
+                let successRateVal = 0;
                 let prod = '0.0';
                 let contractHTML = '-';
 
@@ -1333,7 +1333,7 @@
                     else if (gapValue < 0) { gapDisplay = `${gapValue}`; gapStyle = 'color: #DC2626; font-weight: bold;'; }
                     else { gapDisplay = '0'; gapStyle = 'font-weight: bold;'; }
 
-                    successRateDriver = assigned > 0 ? ((d.delivered / assigned) * 100).toFixed(1) + '%' : '0.0%';
+                    successRateVal = assigned > 0 ? (d.delivered / assigned) * 100 : 0;
                     prod = d.target > 0 ? ((assigned / d.target) * 100).toFixed(1) : 0;
                     
                     const isAchieve = parseFloat(prod) >= 100;
@@ -1342,6 +1342,35 @@
                     if (d.contract === 'Driver Dedicated') contractHTML = `<span class="contract-driver-ded">${d.contract}</span>`;
                     else if (d.contract === 'Rider Dedicated') contractHTML = `<span class="contract-rider-ded">${d.contract}</span>`;
                     else contractHTML = `<span class="contract-plus">${d.contract}</span>`;
+                }
+
+                // Kalkulasi Volume Bar & Warna Success Rate untuk Hourly Table
+                let srCellHTML = '';
+                if (d.isLMHub) {
+                    srCellHTML = `<td style="font-weight: bold; color: var(--text-muted);">-</td>`;
+                } else {
+                    const formattedRate = successRateVal.toFixed(1);
+                    let barColor = '#EF4444'; // Merah (< 85%)
+                    let textColor = '#DC2626';
+
+                    if (successRateVal >= 95) {
+                        barColor = '#22C55E'; // Hijau (>= 95%)
+                        textColor = '#16A34A';
+                    } else if (successRateVal >= 85) {
+                        barColor = '#F59E0B'; // Kuning (85% - 94.9%)
+                        textColor = '#D97706';
+                    }
+
+                    const fillWidth = Math.min(Math.max(successRateVal, 0), 100);
+
+                    srCellHTML = `<td>
+                        <div class="volume-box">
+                            <div class="volume-bar-bg">
+                                <div class="volume-bar-fill" style="width: ${fillWidth}%; background-color: ${barColor};"></div>
+                            </div>
+                            <span class="volume-text" style="color: ${textColor};">${formattedRate}%</span>
+                        </div>
+                    </td>`;
                 }
 
                 htmlString += `<tr>
@@ -1359,7 +1388,7 @@
                     <td style="font-weight: bold; color: #0D9488;">${d.deliveringCount}</td>
                     <td style="font-weight: bold; color: #D97706;">${d.onHoldCount}</td>
                     <td style="font-weight: bold;">${d.delivered}</td>
-                    <td style="font-weight: bold; color: #16A34A;">${successRateDriver}</td>
+                    ${srCellHTML}
                     <td style="font-weight: bold;">${prod}%</td>
                     <td>${badgeHTML}</td>
                 `;
