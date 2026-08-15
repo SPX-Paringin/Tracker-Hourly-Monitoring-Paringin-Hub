@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPX Express - Delivery & Performance Monitoring</title>
+    <!-- Chart.js, PapaParse & html2canvas CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            /* Palette Warna SPX Light Theme */
+            --bg-light: #F0F4F8;
+            --card-bg: #FFFFFF;
+            --spx-navy: #0B132B;
+            --spx-navy-light: #1C2541;
+            --spx-orange: #FF5722;
+            --spx-orange-glow: rgba(255, 87, 34, 0.25);
+            --orange-bright: #FF7043;
+            
+            --text-main: #1E293B;
+            --text-muted: #64748B;
+            --border-color: #CBD5E1;
+            --table-header-bg: #F1F5F9;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        
+        body { 
+            background: var(--bg-light);
+            color: var(--text-main); 
+            padding: 16px; 
+            min-height: 100vh;
+        }
+
+        /* Continuous Moving Courier Track */
+        .courier-track {
+            width: 100%;
+            height: 38px;
+            background: #FFFFFF;
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            border: 1px dashed rgba(255, 87, 34, 0.4);
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .courier-runner {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            animation: driveCourier 12s linear infinite;
+            white-space: nowrap;
+        }
+
+        .courier-icon {
+            font-size: 20px;
+            filter: drop-shadow(0 2px 4px rgba(255, 87, 34, 0.3));
+            animation: bounceCourier 0.4s ease-in-out infinite alternate;
+        }
+
+        .courier-tag {
+            background: linear-gradient(90deg, var(--spx-orange), var(--orange-bright));
+            color: #FFF;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 12px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px var(--spx-orange-glow);
+        }
+
+        @keyframes driveCourier {
+            0% { left: -450px; }
+            100% { left: 100%; }
+        }
+
+        @keyframes bounceCourier {
+            0% { transform: translateY(0px); }
+            100% { transform: translateY(-3px); }
+        }
+
+        /* Loading / Progress Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(11, 19, 43, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid var(--spx-orange);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .progress-box {
+            width: 320px;
+            background: #FFFFFF;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 10px;
+            background: #E2E8F0;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--spx-orange), var(--orange-bright));
+            transition: width 0.3s ease;
+        }
+
+        .progress-text { font-size: 13px; font-weight: bold; color: var(--spx-navy); }
+
+        /* Keyframe Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Header */
+        .header {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px; 
+            padding: 18px 24px; 
+            margin-bottom: 16px;
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap; 
+            gap: 12px;
+            animation: fadeInUp 0.4s ease-out;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+        }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .logo-text { 
+            font-size: 28px; 
+            font-weight: 900; 
+            color: var(--spx-orange); 
+            font-style: italic;
+        }
+        .title-group h1 { font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--spx-navy); }
+        .title-group p { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+        .upload-container { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        
+        .btn-action {
+            padding: 9px 16px; 
+            border-radius: 10px;
+            font-weight: 700; 
+            cursor: pointer; 
+            border: none; 
+            font-size: 12px; 
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: white;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, var(--spx-orange) 0%, var(--orange-bright) 100%);
+            box-shadow: 0 4px 12px var(--spx-orange-glow);
+        }
+        .upload-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(255, 87, 34, 0.4); }
+
+        .export-btn {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+        }
+        .export-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4); }
+
+        .delete-btn {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+        }
+        .delete-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4); }
+
+        .last-import-info { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+        /* Navigation Tab Bar */
+        .tab-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            background: var(--card-bg);
+            padding: 6px;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            animation: fadeInUp 0.5s ease-out;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 13px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: var(--spx-navy);
+            background: var(--bg-light);
+        }
+
+        .tab-btn.active {
+            background: var(--spx-navy);
+            color: #FFFFFF;
+            box-shadow: 0 4px 12px rgba(11, 19, 43, 0.25);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeInUp 0.4s ease-out; }
+
+        /* Filter Section for Performance */
+        .filter-bar {
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+
+        .filter-group { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+        .filter-item { display: flex; flex-direction: column; gap: 6px; }
+        .filter-item label { font-size: 11px; font-weight: 800; color: var(--spx-navy); text-transform: uppercase; }
+        
+        .select-input {
+            padding: 8px 14px;
+            background: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--spx-navy);
+            font-size: 12px;
+            font-weight: 700;
+            outline: none;
+            cursor: pointer;
+            min-width: 180px;
+            transition: all 0.3s ease;
+        }
+
+        .select-input:focus { border-color: var(--spx-orange); box-shadow: 0 0 8px var(--spx-orange-glow); }
+
+        /* Target Configuration Bar */
+        .target-bar {
+            background: var(--card-bg);
+            border-radius: 16px; 
+            padding: 16px 20px; 
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+            border-left: 5px solid var(--spx-orange);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+        .target-title { font-size: 13px; font-weight: 800; color: var(--spx-navy); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .target-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .target-field { display: flex; flex-direction: column; gap: 6px; }
+        .target-field label { font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+        .target-field input {
+            padding: 8px 12px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 8px;
+            font-size: 13px; 
+            font-weight: 800; 
+            color: var(--spx-navy); 
+            outline: none; 
+            background: var(--bg-light);
+            transition: all 0.3s;
+        }
+        .target-field input:focus { border-color: var(--spx-orange); background: #FFF; box-shadow: 0 0 8px var(--spx-orange-glow); }
+
+        /* KPI Cards Design */
+        .kpi-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
+            gap: 16px; 
+            margin-bottom: 20px; 
+        }
+
+        .kpi-card {
+            background: var(--card-bg);
+            border-radius: 14px; 
+            padding: 12px; 
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .kpi-icon-box {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+            color: #FFFFFF;
+        }
+
+        .kpi-content {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+            overflow: hidden;
+        }
+
+        .kpi-title { 
+            font-size: 11px; 
+            font-weight: 800; 
+            color: var(--text-muted); 
+            text-transform: uppercase; 
+            letter-spacing: 0.3px;
+        }
+
+        .kpi-value { 
+            font-size: 22px; 
+            font-weight: 900; 
+            color: var(--spx-navy); 
+            line-height: 1.2;
+            margin: 2px 0;
+        }
+
+        .kpi-sub { 
+            font-size: 10px; 
+            color: var(--text-muted); 
+            font-weight: 700; 
+            white-space: nowrap;
+        }
+
+        /* Variasi Warna Kotak Ikon */
+        .bg-icon-orange { background: linear-gradient(135deg, #FF5722, #FF7043); }
+        .bg-icon-green  { background: linear-gradient(135deg, #10B981, #059669); }
+        .bg-icon-red    { background: linear-gradient(135deg, #EF4444, #DC2626); }
+        .bg-icon-blue   { background: linear-gradient(135deg, #0284C7, #0369A1); }
+        .bg-icon-amber  { background: linear-gradient(135deg, #F59E0B, #D97706); }
+        .bg-icon-teal   { background: linear-gradient(135deg, #0D9488, #0F766E); }
+
+        /* Tables Container */
+        .section-card {
+            background: var(--card-bg);
+            border-radius: 16px; 
+            padding: 20px; 
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        }
+        .section-title-bar { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap; 
+            gap: 12px;
+            margin-bottom: 16px; 
+        }
+        .section-title { font-size: 14px; font-weight: 800; color: var(--spx-navy); }
+
+        /* Search Box */
+        .search-box { position: relative; min-width: 250px; }
+        .search-input {
+            width: 100%;
+            padding: 8px 14px 8px 36px;
+            background: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            color: var(--spx-navy);
+            font-size: 12px;
+            font-weight: 700;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        .search-input:focus { border-color: var(--spx-orange); background: #FFF; box-shadow: 0 0 8px var(--spx-orange-glow); }
+        .search-icon {
+            position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            font-size: 13px; color: var(--text-muted); pointer-events: none;
+        }
+
+        /* Table Styling */
+        .table-responsive { overflow-x: auto; max-width: 100%; border-radius: 10px; border: 1px solid var(--border-color); }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: center; white-space: nowrap; color: #0F172A; }
+        th, td { padding: 10px 12px; border: 1px solid var(--border-color); }
+        th { background: var(--table-header-bg); color: var(--spx-navy); font-weight: 900; text-transform: uppercase; font-size: 10px; }
+        tbody tr { transition: background 0.2s; font-weight: 600; }
+        tbody tr:hover { background-color: #F1F5F9; }
+        
+        .volume-box { display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .volume-bar-bg { width: 60px; height: 8px; background: #CBD5E1; border-radius: 4px; overflow: hidden; position: relative; }
+        .volume-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease-in-out; }
+        .volume-text { font-weight: 900; font-size: 11px; min-width: 42px; text-align: right; }
+
+        .contract-driver-ded { color: #581C87; font-weight: 800; background-color: #F3E8FF; padding: 3px 8px; border-radius: 6px; border: 1px solid #D8B4FE; }
+        .contract-rider-ded { color: #92400E; font-weight: 800; background-color: #FEF3C7; padding: 3px 8px; border-radius: 6px; border: 1px solid #FDE68A; }
+        .contract-plus { color: #1E40AF; font-weight: 800; background-color: #DBEAFE; padding: 3px 8px; border-radius: 6px; border: 1px solid #93C5FD; }
+
+        .badge { padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 800; display: inline-block; }
+        .badge-achieve { background: #DCFCE7; color: #15803D; border: 1px solid #86EFAC; }
+        .badge-not { background: #FEE2E2; color: #B91C1C; border: 1px solid #FCA5A5; }
+        .badge-lmhub { background: #FFEDD5; color: #C2410C; border: 1px solid #FDBA74; }
+
+        .hm-0 { background: transparent; color: #94A3B8; font-weight: 500; }
+        .hm-1 { background: #DCFCE7; color: #14532D; font-weight: 700; }
+        .hm-2 { background: #86EFAC; color: #14532D; font-weight: 800; }
+        .hm-3 { background: #4ADE80; color: #064E3B; font-weight: 900; }
+        .hm-4 { background: #22C55E; color: #FFFFFF; font-weight: 900; box-shadow: inset 0 0 4px rgba(0,0,0,0.15); }
+
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+        .chart-box { 
+            background: var(--card-bg);
+            border-radius: 16px; 
+            padding: 18px; 
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+        .chart-container { position: relative; height: 230px; }
+
+        /* Style khusus saat ekspor gambar berlangsung agar hasil HD & Tajam */
+        body.is-exporting * {
+            animation: none !important;
+            transition: none !important;
+        }
+        body.is-exporting .table-responsive {
+            overflow: visible !important;
+            max-width: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Continuous Moving Courier Animation -->
+    <div class="courier-track">
+        <div class="courier-runner">
+            <span class="courier-icon">🛵💨</span>
+            <span class="courier-tag">Matamu Lelah Bukan Karena Kurang Tidur, Tapi Karena Penuh Dengan Dendam</span>
+        </div>
+    </div>
+
+    <!-- Loading Modal / Progress Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" data-html2canvas-ignore="true">
+        <div class="spinner"></div>
+        <div class="progress-box">
+            <div class="progress-text" id="progressStatusText">Membaca file CSV...</div>
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-weight: bold;" id="progressPercentText">0%</div>
+        </div>
+    </div>
+
+    <!-- Header Section -->
+    <div class="header">
+        <div class="brand">
+            <div class="logo-text">SPX</div>
+            <div class="title-group">
+                <h1>Delivery & Performance Monitoring</h1>
+                <p>Paringin LM Hub | Live Courier Analytics</p>
+            </div>
+        </div>
+        <div class="upload-container">
+            <div class="action-buttons">
+                <label for="csvFileInput" class="btn-action upload-btn">📁 Upload CSV Baru</label>
+                <button class="btn-action export-btn" onclick="exportToPNG()">📷 Export PNG</button>
+                <button class="btn-action delete-btn" onclick="clearCSVData()">🗑️ Hapus Data</button>
+            </div>
+            <!-- Mendukung semua jenis file CSV/Spreadsheet -->
+            <input type="file" id="csvFileInput" accept=".csv, text/csv, application/vnd.ms-excel, application/csv, text/x-csv, text/comma-separated-values, application/x-csv" style="display: none;">
+            <div class="last-import-info" id="lastImportText">Belum ada data diimpor</div>
+        </div>
+    </div>
+
+    <!-- Navigation Tab Bar -->
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('hourlyTab', this)">
+            ⏱️ Hourly Monitoring
+        </button>
+        <button class="tab-btn" onclick="switchTab('performanceTab', this)">
+            📊 Performance Monitoring
+        </button>
+    </div>
+
+    <!-- ================= TAB 1: HOURLY MONITORING ================= -->
+    <div id="hourlyTab" class="tab-content active">
+        
+        <!-- Target Configuration Bar -->
+        <div class="target-bar">
+            <div class="target-title">⚙️ Update Target Weekly</div>
+            <div class="target-inputs">
+                <div class="target-field">
+                    <label for="targetDriverDed">🚚 Driver Dedicated</label>
+                    <input list="targetOptions" id="targetDriverDed" value="113" onchange="updateTargetsAndRecalculate()">
+                </div>
+                <div class="target-field">
+                    <label for="targetRiderDed">🛵 Rider Dedicated</label>
+                    <input list="targetOptions" id="targetRiderDed" value="100" onchange="updateTargetsAndRecalculate()">
+                </div>
+                <div class="target-field">
+                    <label for="targetRiderPlus">🛵 Rider Plus</label>
+                    <input list="targetOptions" id="targetRiderPlus" value="84" onchange="updateTargetsAndRecalculate()">
+                </div>
+            </div>
+        </div>
+
+        <datalist id="targetOptions"></datalist>
+
+        <!-- KPI Summary Cards Colorful -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-orange">👥</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Total Driver</div>
+                    <div class="kpi-value" id="cardTotalDrivers">0</div>
+                    <div class="kpi-sub">Driver Aktif</div>
+                </div>
+            </div>
+            
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-green">🎯</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Total Order</div>
+                    <div class="kpi-value" id="cardTotalOrder">0</div>
+                    <div class="kpi-sub">Today</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-amber">⏳</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">OnHold</div>
+                    <div class="kpi-value" id="cardTotalOnHold">0</div>
+                    <div class="kpi-sub">Order</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-blue">🛵</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Delivering</div>
+                    <div class="kpi-value" id="cardTotalDelivering">0</div>
+                    <div class="kpi-sub">Order</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-teal">🚚</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Delivered</div>
+                    <div class="kpi-value" id="cardTotalDelivered">0</div>
+                    <div class="kpi-sub">Total Delivered</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-orange">📈</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Success Rate</div>
+                    <div class="kpi-value" id="cardSuccessRate">0%</div>
+                    <div class="kpi-sub">Rata-rata Achievement</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-red">⚠️</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Not Achieve</div>
+                    <div class="kpi-value" id="cardNotAchieve">0</div>
+                    <div class="kpi-sub">Driver / Rider</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Hourly Table Section -->
+        <div class="section-card">
+            <div class="section-title-bar">
+                <div>
+                    <span class="section-title">📋 HOURLY MONITORING</span>
+                    <span style="font-size: 11px; font-weight: normal; color: var(--text-muted); margin-left: 8px;">🟢 Live Delivery Tracker</span>
+                </div>
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInputHourly" class="search-input" placeholder="Cari ID, Nama Driver, Zone..." oninput="handleSearchHourly()">
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Driver ID</th><th>Driver Name</th><th>Contract</th><th>Zone</th>
+                            <th>First Delivering</th><th>First Delivered</th><th>Last Delivered</th>
+                            <th>Target</th><th>Assigned</th><th>Gap</th><th>Delivering</th><th>OnHold</th><th>Delivered</th>
+                            <th>Success Rate</th><th>% Prod</th><th>Status</th>
+                            <th>06</th><th>07</th><th>08</th><th>09</th><th>10</th><th>11</th>
+                            <th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th>
+                            <th>18</th><th>19</th><th>20</th><th>21</th><th>22</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBodyHourly">
+                        <tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Visual Charts Grid -->
+        <div class="charts-grid">
+            <div class="chart-box">
+                <div class="section-title" style="margin-bottom: 14px;">📊 Achievement Summary</div>
+                <div class="chart-container"><canvas id="donutChart"></canvas></div>
+            </div>
+            <div class="chart-box">
+                <div class="section-title" style="margin-bottom: 14px;">📈 Hourly Delivery Trend</div>
+                <div class="chart-container"><canvas id="lineChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= TAB 2: PERFORMANCE MONITORING ================= -->
+    <div id="performanceTab" class="tab-content">
+
+        <!-- Performance Filters -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <div class="filter-item">
+                    <label for="filterContract">1. Filter Contract</label>
+                    <select id="filterContract" class="select-input" onchange="applyPerformanceFilters()">
+                        <option value="ALL">Semua Contract</option>
+                        <option value="Rider Dedicated">Rider Dedicated</option>
+                        <option value="Driver Dedicated">Driver Dedicated</option>
+                        <option value="Rider Plus">Rider Plus</option>
+                    </select>
+                </div>
+                <div class="filter-item">
+                    <label for="filterOrderAccount">2. Filter Order Account</label>
+                    <select id="filterOrderAccount" class="select-input" onchange="applyPerformanceFilters()">
+                        <option value="ALL">Semua Account (ECO & STD)</option>
+                        <option value="ECO">Economy (ECO)</option>
+                        <option value="STD">Standard (STD)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInputPerf" class="search-input" placeholder="Cari ID, Nama, atau Zone..." oninput="applyPerformanceFilters()">
+            </div>
+        </div>
+
+        <!-- Performance KPI Cards Colorful -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-green">🎯</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Total Order</div>
+                    <div class="kpi-value" id="perfCardTotalOrder">0</div>
+                    <div class="kpi-sub">Total Order CSV</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-blue">📋</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Assigned</div>
+                    <div class="kpi-value" id="perfCardAssigned">0</div>
+                    <div class="kpi-sub">Order Terbagi</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-teal">🛵</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Delivering</div>
+                    <div class="kpi-value" id="perfCardDelivering">0</div>
+                    <div class="kpi-sub">Proses Kirim</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-amber">⏳</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">OnHold</div>
+                    <div class="kpi-value" id="perfCardOnHold">0</div>
+                    <div class="kpi-sub">Order Tertahan</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-green">🚚</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Delivered</div>
+                    <div class="kpi-value" id="perfCardDelivered">0</div>
+                    <div class="kpi-sub">Order Terkirim</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon-box bg-icon-orange">📈</div>
+                <div class="kpi-content">
+                    <div class="kpi-title">Success Rate</div>
+                    <div class="kpi-value" id="perfCardSuccessRate">0%</div>
+                    <div class="kpi-sub">% Success Delivery</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Table Section -->
+        <div class="section-card">
+            <div class="section-title-bar">
+                <div>
+                    <span class="section-title">📊 PERFORMANCE MONITORING</span>
+                    <span style="font-size: 11px; font-weight: normal; color: var(--text-muted); margin-left: 8px;">Filter Aktif Terhubung</span>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>ID Driver / Zone</th>
+                            <th>Driver Name / Zone Name</th>
+                            <th>Contract Type</th>
+                            <th>Assigned</th>
+                            <th>Delivering</th>
+                            <th>Delivered</th>
+                            <th>OnHold</th>
+                            <th>Received</th>
+                            <th>Success Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBodyPerformance">
+                        <tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data performance.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let donutChartInstance = null;
+        let lineChartInstance = null;
+        
+        let globalRawCSVData = [];
+        let cachedDrivers = [];
+        let cachedTableDataList = [];
+        let cachedGlobalOnHold = 0;
+        let cachedGlobalDelivering = 0;
+
+        const driverDedicatedNames = ["ARIE HIDAYATULLAH", "HERIANTO", "M NOR FAHRI"];
+
+        // IndexedDB Helpers
+        const DB_NAME = 'SPXDashboardDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'csvStore';
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME);
+                    }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function saveCSVToIDB(data, importTime) {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                store.put({ data: data, time: importTime }, 'latest_csv');
+                return tx.complete;
+            } catch (e) {
+                console.error("Gagal menyimpan ke IndexedDB:", e);
+            }
+        }
+
+        async function loadCSVFromIDB() {
+            try {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.get('latest_csv');
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            } catch (e) {
+                console.error("Gagal membaca dari IndexedDB:", e);
+                return null;
+            }
+        }
+
+        async function deleteCSVFromIDB() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                store.delete('latest_csv');
+                return tx.complete;
+            } catch (e) {
+                console.error("Gagal menghapus IndexedDB:", e);
+            }
+        }
+
+        // Switch Tabs
+        function switchTab(tabId, btnElement) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tabId).classList.add('active');
+            btnElement.classList.add('active');
+        }
+
+        // Init Datalist Target & Restore Persistent Storage
+        window.addEventListener('DOMContentLoaded', async () => {
+            const datalist = document.getElementById('targetOptions');
+            for (let i = 1; i <= 200; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                datalist.appendChild(opt);
+            }
+
+            loadSavedTargets();
+            await loadSavedCSVData();
+        });
+
+        function loadSavedTargets() {
+            const savedDriver = localStorage.getItem('spx_target_driver_ded');
+            const savedRider = localStorage.getItem('spx_target_rider_ded');
+            const savedPlus = localStorage.getItem('spx_target_rider_plus');
+
+            if (savedDriver !== null) document.getElementById('targetDriverDed').value = savedDriver;
+            if (savedRider !== null) document.getElementById('targetRiderDed').value = savedRider;
+            if (savedPlus !== null) document.getElementById('targetRiderPlus').value = savedPlus;
+        }
+
+        function updateTargetsAndRecalculate() {
+            localStorage.setItem('spx_target_driver_ded', document.getElementById('targetDriverDed').value);
+            localStorage.setItem('spx_target_rider_ded', document.getElementById('targetRiderDed').value);
+            localStorage.setItem('spx_target_rider_plus', document.getElementById('targetRiderPlus').value);
+
+            recalculateTarget();
+        }
+
+        async function loadSavedCSVData() {
+            const record = await loadCSVFromIDB();
+
+            if (record && record.data) {
+                document.getElementById('lastImportText').innerText = `Terakhir Impor: ${record.time}`;
+                globalRawCSVData = record.data;
+                processRawCSV(globalRawCSVData);
+            }
+        }
+
+        function getWITAFormattedDate() {
+            const now = new Date();
+            const options = {
+                timeZone: 'Asia/Makassar',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            };
+            const formatter = new Intl.DateTimeFormat('id-ID', options);
+            const parts = formatter.formatToParts(now);
+            
+            let d='', m='', y='', hh='', mm='', ss='';
+            parts.forEach(p => {
+                if (p.type === 'day') d = p.value;
+                if (p.type === 'month') m = p.value;
+                if (p.type === 'year') y = p.value;
+                if (p.type === 'hour') hh = p.value;
+                if (p.type === 'minute') mm = p.value;
+                if (p.type === 'second') ss = p.value;
+            });
+
+            return `${d}/${m}/${y} ${hh}:${mm}:${ss} WITA`;
+        }
+
+        // CSV File Reader (UNIVERSAL SUPPORT UNTUK EXCEL / GOOGLE SHEETS)
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showProgressModal();
+            updateProgress(15, 'Membaca file CSV...');
+
+            setTimeout(() => {
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: 'greedy',
+                    delimiter: "", // Auto-detect pembatas: koma (,), titik koma (;), atau tab (\t)
+                    transformHeader: function(header) {
+                        // Menghapus UTF-8 BOM tersembunyi (\ufeff) yang dibuat oleh Excel
+                        return header ? header.replace(/^\uFEFF/, '').trim() : '';
+                    },
+                    complete: async function(results) {
+                        updateProgress(50, 'Menganalisis baris data...');
+                        
+                        setTimeout(async () => {
+                            globalRawCSVData = results.data;
+                            const timeWITA = getWITAFormattedDate();
+
+                            updateProgress(75, 'Menyimpan & Menghitung Analytics...');
+
+                            await saveCSVToIDB(globalRawCSVData, timeWITA);
+
+                            setTimeout(() => {
+                                document.getElementById('lastImportText').innerText = `Terakhir Impor: ${timeWITA}`;
+                                processRawCSV(globalRawCSVData);
+                                
+                                updateProgress(100, 'Selesai!');
+                                setTimeout(hideProgressModal, 300);
+                                e.target.value = '';
+                            }, 50);
+                        }, 50);
+                    },
+                    error: function(err) {
+                        hideProgressModal();
+                        alert("Gagal membaca file CSV: " + err.message);
+                        e.target.value = '';
+                    }
+                });
+            }, 50);
+        });
+
+        // Hapus Data CSV
+        async function clearCSVData() {
+            if (!globalRawCSVData || globalRawCSVData.length === 0) {
+                alert("Belum ada data CSV yang diimpor.");
+                return;
+            }
+
+            if (!confirm("Apakah Anda yakin ingin menghapus data CSV yang tersimpan?")) return;
+
+            await deleteCSVFromIDB();
+
+            globalRawCSVData = [];
+            cachedDrivers = [];
+            cachedTableDataList = [];
+            cachedGlobalOnHold = 0;
+            cachedGlobalDelivering = 0;
+
+            document.getElementById('lastImportText').innerText = 'Data telah dihapus';
+            
+            // Reset UI Hourly
+            document.getElementById('cardTotalDrivers').innerText = '0';
+            document.getElementById('cardTotalOrder').innerText = '0';
+            document.getElementById('cardTotalOnHold').innerText = '0';
+            document.getElementById('cardTotalDelivering').innerText = '0';
+            document.getElementById('cardTotalDelivered').innerText = '0';
+            document.getElementById('cardSuccessRate').innerText = '0%';
+            document.getElementById('cardNotAchieve').innerText = '0';
+            document.getElementById('tableBodyHourly').innerHTML = '<tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data.</td></tr>';
+
+            // Reset UI Performance
+            document.getElementById('perfCardTotalOrder').innerText = '0';
+            document.getElementById('perfCardAssigned').innerText = '0';
+            document.getElementById('perfCardDelivering').innerText = '0';
+            document.getElementById('perfCardOnHold').innerText = '0';
+            document.getElementById('perfCardDelivered').innerText = '0';
+            document.getElementById('perfCardSuccessRate').innerText = '0%';
+            document.getElementById('tableBodyPerformance').innerHTML = '<tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data performance.</td></tr>';
+
+            if (donutChartInstance) donutChartInstance.destroy();
+            if (lineChartInstance) lineChartInstance.destroy();
+
+            alert("Data CSV berhasil dihapus dari sistem.");
+        }
+
+        // Export PNG HD
+        async function exportToPNG() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'none';
+
+            const actionBtns = document.querySelector('.action-buttons');
+            const courierTrack = document.querySelector('.courier-track');
+            
+            if (actionBtns) actionBtns.style.visibility = 'hidden';
+            if (courierTrack) courierTrack.style.display = 'none';
+
+            document.body.classList.add('is-exporting');
+            window.scrollTo(0, 0);
+
+            try {
+                const canvas = await html2canvas(document.body, {
+                    scale: 3,
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#F0F4F8',
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0,
+                    ignoreElements: (element) => element.id === 'loadingOverlay'
+                });
+
+                const activeTabBtn = document.querySelector('.tab-btn.active');
+                const tabTitle = activeTabBtn ? activeTabBtn.innerText.trim().replace(/[^a-zA-Z0-9]/g, '_') : 'Dashboard';
+                const timeStamp = new Date().toISOString().slice(0, 10);
+
+                const link = document.createElement('a');
+                link.download = `SPX_${tabTitle}_${timeStamp}.png`;
+                link.href = canvas.toDataURL('image/png', 1.0);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (err) {
+                alert("Gagal melakukan export gambar PNG: " + err.message);
+            } finally {
+                if (actionBtns) actionBtns.style.visibility = 'visible';
+                if (courierTrack) courierTrack.style.display = 'block';
+                document.body.classList.remove('is-exporting');
+            }
+        }
+
+        function showProgressModal() { document.getElementById('loadingOverlay').style.display = 'flex'; }
+        function hideProgressModal() { document.getElementById('loadingOverlay').style.display = 'none'; }
+        function updateProgress(percent, statusText) {
+            document.getElementById('progressBarFill').style.width = percent + '%';
+            document.getElementById('progressPercentText').innerText = percent + '%';
+            document.getElementById('progressStatusText').innerText = statusText;
+        }
+
+        function formatHHMM(dateString) {
+            if (!dateString) return null;
+            const d = new Date(dateString);
+            if (isNaN(d.getTime())) return null;
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            return `${hh}:${mm}`;
+        }
+
+        function getContractType(driverName, rawContract) {
+            const nameUpper = (driverName || '').toUpperCase();
+            if (driverDedicatedNames.some(dName => nameUpper.includes(dName))) {
+                return 'Driver Dedicated';
+            }
+            if ((rawContract || '').toUpperCase().includes('DEDICATED')) {
+                return 'Rider Dedicated';
+            }
+            return 'Rider Plus';
+        }
+
+        function getTargetByContract(contractType) {
+            const tDriverDed = parseInt(document.getElementById('targetDriverDed').value) || 113;
+            const tRiderDed = parseInt(document.getElementById('targetRiderDed').value) || 100;
+            const tRiderPlus = parseInt(document.getElementById('targetRiderPlus').value) || 84;
+
+            if (contractType === 'Driver Dedicated') return tDriverDed;
+            if (contractType === 'Rider Dedicated') return tRiderDed;
+            return tRiderPlus;
+        }
+
+        // Fleksibilitas ekstra untuk deteksi nama kolom CSV
+        function getCSVKeys(sample) {
+            const keys = Object.keys(sample || {});
+            
+            const findKey = (possibleNames) => {
+                for (let p of possibleNames) {
+                    const cleanP = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const found = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanP);
+                    if (found) return found;
+                }
+                return null;
+            };
+
+            return {
+                kDriverId: findKey(['Driver ID', 'driver_id', 'id', 'driverid']),
+                kDriverName: findKey(['Driver Name', 'driver_name', 'name', 'drivername']),
+                kStatus: findKey(['Status', 'status', 'order status']),
+                kZone: findKey(['Zone', 'zone', 'zone name', 'hub zone']),
+                kAssignTime: findKey(['assign time', 'Assign Time', 'assign_time', 'First Assign Time']),
+                kDeliveredTime: findKey(['Delivered Time', 'delivered time', 'delivered_time']),
+                kContract: findKey(['Driver Contract Type', 'driver_contract_type', 'Contract', 'contract']),
+                kService: findKey(['Service', 'Service Type', 'Order Account', 'Service Level', 'Shipping Option', 'Shipment Type'])
+            };
+        }
+
+        // Process RAW CSV Data
+        function processRawCSV(data) {
+            if (!data || data.length === 0) return;
+
+            const map = getCSVKeys(data[0]);
+            const driversMap = {};
+            const unassignedZoneMap = {};
+            
+            let globalOnHoldCount = 0;
+            let globalDeliveringCount = 0;
+
+            const onHoldStatuses = ['onhold', 'on_hold', 'on hold', 'lmhub_received', 'lm hub received'];
+            const deliveringStatuses = ['delivering', 'in_transit', 'out_for_delivery', 'delivering_package'];
+
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                const driverId = map.kDriverId && row[map.kDriverId] ? String(row[map.kDriverId]).trim() : '';
+                const driverName = map.kDriverName && row[map.kDriverName] ? String(row[map.kDriverName]).trim() : '';
+                const status = map.kStatus && row[map.kStatus] ? String(row[map.kStatus]).trim().toLowerCase() : '';
+                const zone = map.kZone && row[map.kZone] ? String(row[map.kZone]).trim() : '-';
+                const assignTime = map.kAssignTime ? row[map.kAssignTime] : '';
+                const deliveredTime = map.kDeliveredTime ? row[map.kDeliveredTime] : '';
+
+                if (onHoldStatuses.includes(status)) globalOnHoldCount++;
+                if (deliveringStatuses.includes(status)) globalDeliveringCount++;
+
+                if (driverId && driverId !== '0' && driverId !== 'undefined') {
+                    if (!driversMap[driverId]) {
+                        const rawContract = map.kContract ? row[map.kContract] : '';
+                        const contractType = getContractType(driverName, rawContract);
+                        
+                        driversMap[driverId] = {
+                            id: driverId,
+                            name: driverName || 'Unknown',
+                            contract: contractType,
+                            target: getTargetByContract(contractType),
+                            zone: zone,
+                            firstDelivering: null,
+                            firstDelivered: null,
+                            lastDelivered: null,
+                            deliveringCount: 0,
+                            onHoldCount: 0,
+                            delivered: 0,
+                            hourly: new Array(17).fill(0),
+                            isLMHub: false
+                        };
+                    }
+
+                    const driver = driversMap[driverId];
+
+                    const formattedAssign = formatHHMM(assignTime);
+                    if (formattedAssign) {
+                        if (!driver.firstDelivering || formattedAssign < driver.firstDelivering) {
+                            driver.firstDelivering = formattedAssign;
+                        }
+                    }
+
+                    if (deliveringStatuses.includes(status)) driver.deliveringCount++;
+                    if (onHoldStatuses.includes(status)) driver.onHoldCount++;
+
+                    if (status === 'delivered') {
+                        driver.delivered++;
+                        const formattedDelivered = formatHHMM(deliveredTime);
+                        if (formattedDelivered) {
+                            if (!driver.firstDelivered || formattedDelivered < driver.firstDelivered) {
+                                driver.firstDelivered = formattedDelivered;
+                            }
+                            if (!driver.lastDelivered || formattedDelivered > driver.lastDelivered) {
+                                driver.lastDelivered = formattedDelivered;
+                            }
+                        }
+
+                        if (deliveredTime) {
+                            const hour = new Date(deliveredTime).getHours();
+                            if (hour >= 6 && hour <= 22) {
+                                driver.hourly[hour - 6]++;
+                            }
+                        }
+                    }
+                } else if (onHoldStatuses.includes(status)) {
+                    if (!unassignedZoneMap[zone]) {
+                        unassignedZoneMap[zone] = {
+                            id: zone,
+                            name: zone,
+                            contract: '-',
+                            target: 0,
+                            zone: zone,
+                            firstDelivering: '-',
+                            firstDelivered: '-',
+                            lastDelivered: '-',
+                            deliveringCount: 0,
+                            onHoldCount: 0,
+                            delivered: 0,
+                            hourly: new Array(17).fill(0),
+                            isLMHub: true,
+                            statusName: 'LMHub_Received'
+                        };
+                    }
+                    unassignedZoneMap[zone].onHoldCount++;
+                }
+            }
+
+            cachedDrivers = Object.values(driversMap);
+            cachedDrivers.sort((a, b) => b.delivered - a.delivered);
+
+            const unassignedList = Object.values(unassignedZoneMap);
+            unassignedList.sort((a, b) => a.zone.localeCompare(b.zone));
+
+            cachedTableDataList = [...cachedDrivers, ...unassignedList];
+            cachedGlobalOnHold = globalOnHoldCount;
+            cachedGlobalDelivering = globalDeliveringCount;
+
+            renderHourlyDashboard(cachedDrivers, cachedTableDataList, cachedGlobalOnHold, cachedGlobalDelivering);
+            applyPerformanceFilters();
+        }
+
+        function recalculateTarget() {
+            if (!cachedDrivers || cachedDrivers.length === 0) return;
+
+            cachedDrivers.forEach(d => {
+                d.target = getTargetByContract(d.contract);
+            });
+
+            renderHourlyDashboard(cachedDrivers, cachedTableDataList, cachedGlobalOnHold, cachedGlobalDelivering);
+        }
+
+        function handleSearchHourly() {
+            const query = document.getElementById('searchInputHourly').value.toLowerCase().trim();
+            if (!query) {
+                renderHourlyTableRows(cachedTableDataList);
+                return;
+            }
+
+            const filtered = cachedTableDataList.filter(d => {
+                return (
+                    (d.id && String(d.id).toLowerCase().includes(query)) ||
+                    (d.name && String(d.name).toLowerCase().includes(query)) ||
+                    (d.zone && String(d.zone).toLowerCase().includes(query)) ||
+                    (d.contract && String(d.contract).toLowerCase().includes(query))
+                );
+            });
+
+            renderHourlyTableRows(filtered);
+        }
+
+        function renderHourlyDashboard(drivers, tableDataList, globalOnHoldCount, globalDeliveringCount) {
+            const totalDrivers = drivers.length;
+            const totalDelivered = drivers.reduce((sum, d) => sum + d.delivered, 0);
+            const totalOrder = totalDelivered + globalOnHoldCount;
+            const successRate = totalOrder > 0 ? ((totalDelivered / totalOrder) * 100).toFixed(2) : '0.00';
+            
+            const notAchieveCount = drivers.filter(d => {
+                const assigned = d.delivered + d.onHoldCount + d.deliveringCount;
+                return (assigned / d.target) < 1;
+            }).length;
+
+            document.getElementById('cardTotalDrivers').innerText = totalDrivers;
+            document.getElementById('cardTotalOrder').innerText = totalOrder.toLocaleString('id-ID');
+            document.getElementById('cardTotalOnHold').innerText = globalOnHoldCount.toLocaleString('id-ID');
+            document.getElementById('cardTotalDelivering').innerText = globalDeliveringCount.toLocaleString('id-ID');
+            document.getElementById('cardTotalDelivered').innerText = totalDelivered.toLocaleString('id-ID');
+            document.getElementById('cardSuccessRate').innerText = successRate + '%';
+            document.getElementById('cardNotAchieve').innerText = notAchieveCount;
+
+            handleSearchHourly();
+            renderCharts(drivers, totalDrivers - notAchieveCount, notAchieveCount);
+        }
+
+        function renderHourlyTableRows(dataList) {
+            const tbody = document.getElementById('tableBodyHourly');
+            tbody.innerHTML = '';
+
+            if (dataList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="34" style="padding: 20px; color: var(--text-muted);">Tidak ada data yang cocok.</td></tr>`;
+                return;
+            }
+
+            let htmlString = '';
+            dataList.forEach((d, idx) => {
+                let badgeHTML = '';
+                let assigned = 0;
+                let gapDisplay = '0';
+                let gapStyle = 'color: var(--text-main);';
+                let successRateDriver = '0.0%';
+                let prod = '0.0';
+                let contractHTML = '-';
+
+                if (d.isLMHub) {
+                    badgeHTML = `<span class="badge badge-lmhub">${d.statusName}</span>`;
+                } else {
+                    assigned = d.delivered + d.onHoldCount + d.deliveringCount;
+                    const gapValue = assigned - d.target;
+                    
+                    if (gapValue > 0) { gapDisplay = `+${gapValue}`; gapStyle = 'color: #16A34A; font-weight: bold;'; }
+                    else if (gapValue < 0) { gapDisplay = `${gapValue}`; gapStyle = 'color: #DC2626; font-weight: bold;'; }
+                    else { gapDisplay = '0'; gapStyle = 'font-weight: bold;'; }
+
+                    successRateDriver = assigned > 0 ? ((d.delivered / assigned) * 100).toFixed(1) + '%' : '0.0%';
+                    prod = d.target > 0 ? ((assigned / d.target) * 100).toFixed(1) : 0;
+                    
+                    const isAchieve = parseFloat(prod) >= 100;
+                    badgeHTML = `<span class="badge ${isAchieve ? 'badge-achieve' : 'badge-not'}">${isAchieve ? 'Achieve' : 'Not Achieve'}</span>`;
+                    
+                    if (d.contract === 'Driver Dedicated') contractHTML = `<span class="contract-driver-ded">${d.contract}</span>`;
+                    else if (d.contract === 'Rider Dedicated') contractHTML = `<span class="contract-rider-ded">${d.contract}</span>`;
+                    else contractHTML = `<span class="contract-plus">${d.contract}</span>`;
+                }
+
+                htmlString += `<tr>
+                    <td>${idx + 1}</td>
+                    <td style="font-weight: 700;">${d.id}</td>
+                    <td style="text-align: left; font-weight: 700;">${d.name}</td>
+                    <td>${contractHTML}</td>
+                    <td style="font-weight: 600;">${d.zone}</td>
+                    <td style="font-weight: 700; color: #0284C7;">${d.firstDelivering || '-'}</td>
+                    <td style="font-weight: 700; color: #16A34A;">${d.firstDelivered || '-'}</td>
+                    <td style="font-weight: 700; color: #DC2626;">${d.lastDelivered || '-'}</td>
+                    <td style="font-weight: bold;">${d.target}</td>
+                    <td style="font-weight: bold; color: #0284C7; background-color: #F0F9FF;">${assigned}</td>
+                    <td style="${gapStyle}">${gapDisplay}</td>
+                    <td style="font-weight: bold; color: #0D9488;">${d.deliveringCount}</td>
+                    <td style="font-weight: bold; color: #D97706;">${d.onHoldCount}</td>
+                    <td style="font-weight: bold;">${d.delivered}</td>
+                    <td style="font-weight: bold; color: #16A34A;">${successRateDriver}</td>
+                    <td style="font-weight: bold;">${prod}%</td>
+                    <td>${badgeHTML}</td>
+                `;
+
+                d.hourly.forEach(val => {
+                    let hmClass = 'hm-0';
+                    if (val >= 1 && val <= 5) hmClass = 'hm-1';
+                    else if (val >= 6 && val <= 15) hmClass = 'hm-2';
+                    else if (val >= 16 && val <= 30) hmClass = 'hm-3';
+                    else if (val > 30) hmClass = 'hm-4';
+
+                    htmlString += `<td class="${hmClass}">${val || 0}</td>`;
+                });
+
+                htmlString += `</tr>`;
+            });
+            
+            tbody.innerHTML = htmlString;
+        }
+
+        // Performance Tab Filtering
+        function applyPerformanceFilters() {
+            if (!globalRawCSVData || globalRawCSVData.length === 0) return;
+
+            const selectedContract = document.getElementById('filterContract').value;
+            const selectedAccount = document.getElementById('filterOrderAccount').value;
+            const searchQuery = document.getElementById('searchInputPerf').value.toLowerCase().trim();
+
+            const map = getCSVKeys(globalRawCSVData[0]);
+            
+            const onHoldStatuses = ['onhold', 'on_hold', 'on hold'];
+            const lmHubStatuses = ['lmhub_received', 'lm hub received', 'lmhub received'];
+            const deliveringStatuses = ['delivering', 'in_transit', 'out_for_delivery', 'delivering_package'];
+
+            const perfDriversMap = {};
+            let perfTotalOrder = 0;
+            let perfTotalAssigned = 0;
+            let perfTotalDelivering = 0;
+            let perfTotalOnHold = 0;
+            let perfTotalDelivered = 0;
+
+            for (let i = 0; i < globalRawCSVData.length; i++) {
+                const row = globalRawCSVData[i];
+                const driverId = map.kDriverId && row[map.kDriverId] ? String(row[map.kDriverId]).trim() : '';
+                const driverName = map.kDriverName && row[map.kDriverName] ? String(row[map.kDriverName]).trim() : '';
+                const status = map.kStatus && row[map.kStatus] ? String(row[map.kStatus]).trim().toLowerCase() : '';
+                const rawContract = map.kContract ? row[map.kContract] : '';
+                const contractType = getContractType(driverName, rawContract);
+                const serviceValue = map.kService && row[map.kService] ? String(row[map.kService]).toUpperCase() : '';
+                const zone = map.kZone && row[map.kZone] ? String(row[map.kZone]).trim() : 'Unknown Zone';
+
+                const hasDriver = (driverId && driverId !== '0' && driverId !== 'undefined');
+
+                if (selectedContract !== 'ALL') {
+                    if (hasDriver) {
+                        if (contractType !== selectedContract) continue;
+                    } else {
+                        continue;
+                    }
+                }
+
+                if (selectedAccount === 'ECO') {
+                    if (!serviceValue.includes('ECO') && !serviceValue.includes('ECONOMY')) continue;
+                } else if (selectedAccount === 'STD') {
+                    if (serviceValue.includes('ECO') || serviceValue.includes('ECONOMY')) continue;
+                }
+
+                const groupKey = hasDriver ? driverId : ('ZONE_' + zone);
+                const targetId = hasDriver ? driverId : zone;
+                const targetName = hasDriver ? driverName : zone;
+                const targetContract = hasDriver ? contractType : '-';
+
+                if (searchQuery) {
+                    const idMatch = String(targetId).toLowerCase().includes(searchQuery);
+                    const nameMatch = String(targetName).toLowerCase().includes(searchQuery);
+                    if (!idMatch && !nameMatch) continue;
+                }
+
+                perfTotalOrder++;
+
+                const isLMHub = lmHubStatuses.includes(status);
+                const isOnHold = onHoldStatuses.includes(status);
+                const isDelivering = deliveringStatuses.includes(status);
+                const isDelivered = (status === 'delivered');
+
+                if (isOnHold || isLMHub) {
+                    perfTotalOnHold++;
+                }
+
+                if (!perfDriversMap[groupKey]) {
+                    perfDriversMap[groupKey] = {
+                        id: targetId,
+                        name: targetName,
+                        contract: targetContract,
+                        assigned: 0,
+                        delivering: 0,
+                        delivered: 0,
+                        onHold: 0,
+                        received: 0,
+                        isZoneGroup: !hasDriver
+                    };
+                }
+
+                const pd = perfDriversMap[groupKey];
+                
+                pd.assigned++;
+                perfTotalAssigned++;
+
+                if (isDelivering) {
+                    pd.delivering++;
+                    perfTotalDelivering++;
+                } else if (isDelivered) {
+                    pd.delivered++;
+                    perfTotalDelivered++;
+                }
+                
+                if (isOnHold || isLMHub) {
+                    pd.onHold++;
+                }
+                
+                if (isLMHub) {
+                    pd.received++;
+                }
+            }
+
+            const perfList = Object.values(perfDriversMap);
+            perfList.sort((a, b) => b.delivered - a.delivered);
+
+            const successRatePerf = perfTotalAssigned > 0 ? ((perfTotalDelivered / perfTotalAssigned) * 100).toFixed(1) : '0.0';
+
+            document.getElementById('perfCardTotalOrder').innerText = perfTotalOrder.toLocaleString('id-ID');
+            document.getElementById('perfCardAssigned').innerText = perfTotalAssigned.toLocaleString('id-ID');
+            document.getElementById('perfCardDelivering').innerText = perfTotalDelivering.toLocaleString('id-ID');
+            document.getElementById('perfCardOnHold').innerText = perfTotalOnHold.toLocaleString('id-ID');
+            document.getElementById('perfCardDelivered').innerText = perfTotalDelivered.toLocaleString('id-ID');
+            document.getElementById('perfCardSuccessRate').innerText = successRatePerf + '%';
+
+            renderPerformanceTableRows(perfList);
+        }
+
+        function renderPerformanceTableRows(perfList) {
+            const tbody = document.getElementById('tableBodyPerformance');
+            tbody.innerHTML = '';
+
+            if (perfList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Tidak ada data performance yang sesuai dengan filter.</td></tr>`;
+                return;
+            }
+
+            let html = '';
+            perfList.forEach((d, idx) => {
+                let contractHTML = '-';
+                if (d.contract === 'Driver Dedicated') contractHTML = `<span class="contract-driver-ded">${d.contract}</span>`;
+                else if (d.contract === 'Rider Dedicated') contractHTML = `<span class="contract-rider-ded">${d.contract}</span>`;
+                else if (d.contract === 'Rider Plus') contractHTML = `<span class="contract-plus">${d.contract}</span>`;
+                else contractHTML = `<span style="color: var(--text-muted);">${d.contract}</span>`;
+
+                const successRateVal = d.assigned > 0 ? (d.delivered / d.assigned) * 100 : 0;
+                const formattedRate = successRateVal.toFixed(1);
+
+                let barColor = '#EF4444';
+                let textColor = '#DC2626';
+
+                if (successRateVal >= 95) {
+                    barColor = '#22C55E';
+                    textColor = '#16A34A';
+                } else if (successRateVal >= 85) {
+                    barColor = '#F59E0B';
+                    textColor = '#D97706';
+                }
+
+                const fillWidth = Math.min(Math.max(successRateVal, 0), 100);
+
+                html += `<tr>
+                    <td>${idx + 1}</td>
+                    <td style="font-weight: 700;">${d.id}</td>
+                    <td style="text-align: left; font-weight: 700;">${d.name}</td>
+                    <td>${contractHTML}</td>
+                    <td style="font-weight: 800; color: #0284C7;">${d.assigned}</td>
+                    <td style="font-weight: 800; color: #0D9488;">${d.delivering}</td>
+                    <td style="font-weight: 800; color: #16A34A;">${d.delivered}</td>
+                    <td style="font-weight: 800; color: #D97706;">${d.onHold}</td>
+                    <td style="font-weight: bold; color: #B45309; background-color: #FEF3C7;">${d.received}</td>
+                    <td>
+                        <div class="volume-box">
+                            <div class="volume-bar-bg">
+                                <div class="volume-bar-fill" style="width: ${fillWidth}%; background-color: ${barColor};"></div>
+                            </div>
+                            <span class="volume-text" style="color: ${textColor};">${formattedRate}%</span>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Render Charts
+        function renderCharts(drivers, achieveCount, notAchieveCount) {
+            if (donutChartInstance) donutChartInstance.destroy();
+            const ctxDonut = document.getElementById('donutChart').getContext('2d');
+            donutChartInstance = new Chart(ctxDonut, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Achieve', 'Not Achieve'],
+                    datasets: [{
+                        data: [achieveCount, notAchieveCount],
+                        backgroundColor: ['#22C55E', '#EF4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#0B132B', font: { weight: 'bold' } } } }
+                }
+            });
+
+            const hourlyTotals = new Array(17).fill(0);
+            drivers.forEach(d => {
+                d.hourly.forEach((val, idx) => hourlyTotals[idx] += val);
+            });
+
+            if (lineChartInstance) lineChartInstance.destroy();
+            const ctxLine = document.getElementById('lineChart').getContext('2d');
+            lineChartInstance = new Chart(ctxLine, {
+                type: 'line',
+                data: {
+                    labels: ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00'],
+                    datasets: [{
+                        label: 'Total Hourly Delivery',
+                        data: hourlyTotals,
+                        borderColor: '#FF5722',
+                        backgroundColor: 'rgba(255, 87, 34, 0.15)',
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#FF5722',
+                        pointRadius: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#64748B', font: { weight: 'bold' } }, grid: { color: '#CBD5E1' } },
+                        y: { ticks: { color: '#64748B', font: { weight: 'bold' } }, grid: { color: '#CBD5E1' } }
+                    },
+                    plugins: { legend: { labels: { color: '#0B132B', font: { weight: 'bold' } } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
