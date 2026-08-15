@@ -1275,7 +1275,10 @@
         function renderHourlyDashboard(drivers, tableDataList, globalOnHoldCount, globalDeliveringCount) {
             const totalDrivers = drivers.length;
             const totalDelivered = drivers.reduce((sum, d) => sum + d.delivered, 0);
-            const totalOrder = totalDelivered + globalOnHoldCount;
+            
+            // PERBAIKAN: Total Order = Delivering + Delivered + OnHold
+            const totalOrder = globalDeliveringCount + totalDelivered + globalOnHoldCount;
+            
             const successRate = totalOrder > 0 ? ((totalDelivered / totalOrder) * 100).toFixed(2) : '0.00';
             
             const notAchieveCount = drivers.filter(d => {
@@ -1429,8 +1432,6 @@
                     if (!idMatch && !nameMatch) continue;
                 }
 
-                perfTotalOrder++;
-
                 const isLMHub = lmHubStatuses.includes(status);
                 const isOnHold = onHoldStatuses.includes(status);
                 const isDelivering = deliveringStatuses.includes(status);
@@ -1475,6 +1476,9 @@
                     pd.received++;
                 }
             }
+
+            // PERBAIKAN: Total Order Performance = Delivering + Delivered + OnHold
+            perfTotalOrder = perfTotalDelivering + perfTotalDelivered + perfTotalOnHold;
 
             const perfList = Object.values(perfDriversMap);
             perfList.sort((a, b) => b.delivered - a.delivered);
