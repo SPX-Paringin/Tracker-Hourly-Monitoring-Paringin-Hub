@@ -513,7 +513,7 @@
     <div id="loadingOverlay" class="loading-overlay" data-html2canvas-ignore="true">
         <div class="spinner"></div>
         <div class="progress-box">
-            <div class="progress-text" id="progressStatusText">Membaca file CSV...</div>
+            <div class="progress-text" id="progressStatusText">Menghubungkan ke Google Sheets...</div>
             <div class="progress-bar-bg">
                 <div class="progress-bar-fill" id="progressBarFill"></div>
             </div>
@@ -540,12 +540,11 @@
                 </div>
                 <button id="btnLogin" class="btn-action login-btn" onclick="loginGoogle()">🔑 Login Google</button>
 
-                <label for="csvFileInput" class="btn-action upload-btn">📁 Upload CSV Baru</label>
+                <button class="btn-action upload-btn" onclick="fetchGSheetData()">🔄 Refresh Data</button>
                 <button class="btn-action export-btn" onclick="exportToPNG()">📷 Export PNG</button>
                 <button class="btn-action delete-btn" onclick="clearCSVData()">🗑️ Hapus Data</button>
             </div>
-            <input type="file" id="csvFileInput" accept=".csv, text/csv, application/vnd.ms-excel, application/csv, text/x-csv, text/comma-separated-values, application/x-csv" style="display: none;">
-            <div class="last-import-info" id="lastImportText">Belum ada data diimpor</div>
+            <div class="last-import-info" id="lastImportText">Menghubungkan ke Google Sheet...</div>
             <div class="last-import-info" id="lastUpdatedByText" style="color: var(--spx-orange); font-weight: 700;">-</div>
         </div>
     </div>
@@ -676,7 +675,7 @@
                         </tr>
                     </thead>
                     <tbody id="tableBodyHourly">
-                        <tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data.</td></tr>
+                        <tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Sedang memuat data dari Google Sheets (Sheet: Raw)...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -807,7 +806,7 @@
                         </tr>
                     </thead>
                     <tbody id="tableBodyPerformance">
-                        <tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data performance.</td></tr>
+                        <tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Sedang memuat data performance...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -815,8 +814,10 @@
     </div>
 
     <script>
+        // Endpoint Google Sheets Live Export sesuai dengan Spreadsheet milik Anda (Sheet: Raw)
+        const GSHEET_URL = "https://docs.google.com/spreadsheets/d/101q9RWXljbkEI4d1ibS0-4gZoDpCLfbzy7YiAPUfWf4/gviz/tq?tqx=out:csv&sheet=Raw";
+
         // ================= FIREBASE INITIALIZATION =================
-        // Ganti kredensial di bawah dengan API Key dari Firebase Console Kamu!
         const firebaseConfig = {
             apiKey: "YOUR_API_KEY",
             authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -890,13 +891,6 @@
                 // Update Metadata Pembaru Terakhir
                 if (data.last_updated_by_email) {
                     document.getElementById('lastUpdatedByText').innerText = `Terakhir diupdate oleh: ${data.last_updated_by_name} (${data.last_updated_by_email})`;
-                }
-
-                // Update Data CSV dari Cloud
-                if (data.csv_data) {
-                    globalRawCSVData = JSON.parse(data.csv_data);
-                    document.getElementById('lastImportText').innerText = `Terakhir Impor: ${data.updated_at}`;
-                    processRawCSV(globalRawCSVData);
                 }
             }
         });
@@ -981,7 +975,7 @@
             btnElement.classList.add('active');
         }
 
-        // Init Datalist Target & Restore Persistent Storage
+        // Init Datalist Target & Fetch Live Data GSheet
         window.addEventListener('DOMContentLoaded', async () => {
             const datalist = document.getElementById('targetOptions');
             for (let i = 1; i <= 200; i++) {
@@ -991,7 +985,7 @@
             }
 
             loadSavedTargets();
-            await loadSavedCSVData();
+            fetchGSheetData();
         });
 
         function loadSavedTargets() {
@@ -1011,16 +1005,6 @@
 
             syncDataToCloud();
             recalculateTarget();
-        }
-
-        async function loadSavedCSVData() {
-            const record = await loadCSVFromIDB();
-
-            if (record && record.data) {
-                document.getElementById('lastImportText').innerText = `Terakhir Impor: ${record.time}`;
-                globalRawCSVData = record.data;
-                processRawCSV(globalRawCSVData);
-            }
         }
 
         function getWITAFormattedDate() {
@@ -1047,61 +1031,49 @@
             return `${d}/${m}/${y} ${hh}:${mm}:${ss} WITA`;
         }
 
-        // CSV File Reader
-        document.getElementById('csvFileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
+        // Fetch Live CSV Data dari Google Sheet Raw
+        function fetchGSheetData() {
             showProgressModal();
-            updateProgress(15, 'Membaca file CSV...');
+            updateProgress(20, 'Menghubungkan ke Google Sheets (Sheet: Raw)...');
 
-            setTimeout(() => {
-                Papa.parse(file, {
-                    header: true,
-                    skipEmptyLines: 'greedy',
-                    delimiter: "", // Auto-detect pembatas
-                    transformHeader: function(header) {
-                        return header ? header.replace(/^\uFEFF/, '').trim() : '';
-                    },
-                    complete: async function(results) {
-                        updateProgress(50, 'Menganalisis baris data...');
-                        
-                        setTimeout(async () => {
-                            globalRawCSVData = results.data;
-                            const timeWITA = getWITAFormattedDate();
+            Papa.parse(GSHEET_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: 'greedy',
+                transformHeader: function(header) {
+                    return header ? header.replace(/^\uFEFF/, '').trim() : '';
+                },
+                complete: async function(results) {
+                    updateProgress(60, 'Menganalisis baris data...');
+                    globalRawCSVData = results.data;
+                    const timeWITA = getWITAFormattedDate();
 
-                            updateProgress(75, 'Menyimpan & Menghitung Analytics...');
+                    updateProgress(80, 'Menyimpan & Menghitung Analytics...');
+                    await saveCSVToIDB(globalRawCSVData, timeWITA);
+                    syncDataToCloud(globalRawCSVData);
 
-                            await saveCSVToIDB(globalRawCSVData, timeWITA);
-                            syncDataToCloud(globalRawCSVData);
+                    setTimeout(() => {
+                        document.getElementById('lastImportText').innerText = `Terhubung GSheet (Raw): ${timeWITA}`;
+                        processRawCSV(globalRawCSVData);
+                        updateProgress(100, 'Selesai!');
+                        setTimeout(hideProgressModal, 300);
+                    }, 50);
+                },
+                error: function(err) {
+                    hideProgressModal();
+                    alert("Gagal mengambil data dari Google Sheets: " + err.message);
+                }
+            });
+        }
 
-                            setTimeout(() => {
-                                document.getElementById('lastImportText').innerText = `Terakhir Impor: ${timeWITA}`;
-                                processRawCSV(globalRawCSVData);
-                                
-                                updateProgress(100, 'Selesai!');
-                                setTimeout(hideProgressModal, 300);
-                                e.target.value = '';
-                            }, 50);
-                        }, 50);
-                    },
-                    error: function(err) {
-                        hideProgressModal();
-                        alert("Gagal membaca file CSV: " + err.message);
-                        e.target.value = '';
-                    }
-                });
-            }, 50);
-        });
-
-        // Hapus Data CSV
+        // Hapus Data CSV / Cache
         async function clearCSVData() {
             if (!globalRawCSVData || globalRawCSVData.length === 0) {
-                alert("Belum ada data CSV yang diimpor.");
+                alert("Belum ada data yang tersimpan.");
                 return;
             }
 
-            if (!confirm("Apakah Anda yakin ingin menghapus data CSV yang tersimpan?")) return;
+            if (!confirm("Apakah Anda yakin ingin menghapus data tampilan dashboard?")) return;
 
             await deleteCSVFromIDB();
             db.collection('dashboard').doc('spx_state').update({
@@ -1117,7 +1089,7 @@
             cachedGlobalOnHold = 0;
             cachedGlobalDelivering = 0;
 
-            document.getElementById('lastImportText').innerText = 'Data telah dihapus';
+            document.getElementById('lastImportText').innerText = 'Data telah dibersihkan';
             
             // Reset UI Hourly
             document.getElementById('cardTotalDrivers').innerText = '0';
@@ -1127,7 +1099,7 @@
             document.getElementById('cardTotalDelivered').innerText = '0';
             document.getElementById('cardSuccessRate').innerText = '0%';
             document.getElementById('cardNotAchieve').innerText = '0';
-            document.getElementById('tableBodyHourly').innerHTML = '<tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data.</td></tr>';
+            document.getElementById('tableBodyHourly').innerHTML = '<tr><td colspan="34" style="padding: 24px; color: var(--text-muted);">Data kosong. Klik "Refresh Data" untuk memuat kembali.</td></tr>';
 
             // Reset UI Performance
             document.getElementById('perfCardTotalOrder').innerText = '0';
@@ -1136,12 +1108,12 @@
             document.getElementById('perfCardOnHold').innerText = '0';
             document.getElementById('perfCardDelivered').innerText = '0';
             document.getElementById('perfCardSuccessRate').innerText = '0%';
-            document.getElementById('tableBodyPerformance').innerHTML = '<tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Silakan upload file CSV untuk menampilkan data performance.</td></tr>';
+            document.getElementById('tableBodyPerformance').innerHTML = '<tr><td colspan="10" style="padding: 24px; color: var(--text-muted);">Data kosong. Klik "Refresh Data" untuk memuat kembali.</td></tr>';
 
             if (donutChartInstance) donutChartInstance.destroy();
             if (lineChartInstance) lineChartInstance.destroy();
 
-            alert("Data CSV berhasil dihapus dari sistem.");
+            alert("Data berhasil dibersihkan dari tampilan.");
         }
 
         // Export PNG HD
